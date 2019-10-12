@@ -11,6 +11,7 @@ pub enum ParserError {
         expected: Option<String>,
         context: Option<String>,
     },
+    UnexpectedEOF,
 }
 
 impl error::Error for ParserError {}
@@ -32,8 +33,8 @@ impl fmt::Display for ParserError {
                 write!(f, "Unexpected token{} `{}`{}", context_string, found, expected_string)
             },
             ParserError::UnknownToken(message) => write!(f, "Unknown token `{}`", message),
-            // ParserError::Fatal(message) => write!(f, "Fatal error {}", message),
             ParserError::InvalidNumber(message) => write!(f, "Number parse error: '{}'", message),
+            ParserError::UnexpectedEOF => write!(f, "Unexpected EOF"),
         }
     }
 }

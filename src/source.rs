@@ -1,6 +1,4 @@
-use std::io::{BufReader, BufRead};
-use std::fs::File;
-use crate::source::State::Reading;
+use std::io::{BufRead};
 
 pub const EOF: &str = "";
 
@@ -19,20 +17,20 @@ impl State {
         match self {
             State::Init => false,
             State::Done => true,
-            // -1 is a terrible hack, should be fixed
-            State::Reading { line, position } => *position >= line.len() -1,
+            // `- 1` is a terrible hack, should be fixed
+            State::Reading { line, position } => *position >= line.len() - 1,
         }
     }
 }
 
 #[derive(Debug)]
-pub struct Source {
+pub struct Source<T: BufRead> {
     state: State,
-    reader: BufReader<File>,
+    reader: T,
 }
 
-impl Source {
-    pub fn new(reader: BufReader<File>) -> Source {
+impl<T: BufRead> Source<T> {
+    pub fn new(reader: T) -> Source<T> {
         Source {
             reader,
             state: State::Init,
@@ -73,7 +71,7 @@ impl Source {
                 let chars = line[*position..].char_indices();
                 let (offset, current) = chars.skip(1).next().unwrap();
 
-                self.state = Reading {
+                self.state = State::Reading {
                     position: position + offset,
                     line: line.to_string(),
                 };
@@ -84,6 +82,12 @@ impl Source {
     }
 
     pub fn peek_character(&mut self) -> Option<char> {
+        self.peek_n_character(1)
+    }
+
+    // TODO `peek_n_character` is not safe and could fail with unicode. Replace
+    // once this is updated to support unicode correctly.
+    pub fn peek_n_character(&mut self, n: usize) -> Option<char> {
         match &self.state {
             State::Done => None,
             State::Init => {
@@ -96,7 +100,7 @@ impl Source {
                 }
 
                 let chars = line[*position..].char_indices();
-                let (_, current) = chars.skip(1).next()?;
+                let (_, current) = chars.skip(n).next()?;
 
                 Some(current)
             },
@@ -106,7 +110,7 @@ impl Source {
     fn next_line_character(&mut self) -> Option<char> {
         match self.read_line() {
             Some(line) => {
-                self.state = Reading { line, position: 0 };
+                self.state = State::Reading { line, position: 0 };
                 self.current_character()
             },
             None => {
@@ -124,7 +128,7 @@ impl Source {
     }
 }
 
-fn read_line_from_buffer(reader: &mut BufReader<File>) -> Option<String> {
+fn read_line_from_buffer<T: BufRead>(reader: &mut T) -> Option<String> {
     let mut line = String::new();
     let len = reader.read_line(&mut line).expect("Failed to read line");
     if len == 0 {

@@ -4,14 +4,19 @@ use crate::selector_parser::{SelectorParser, is_token_selector};
 use crate::property_parser::PropertyParser;
 use crate::style_sheet::{StyleSheet, Rule};
 
+use std::io::{BufRead};
+use std::result;
+
+pub type Result<T> = result::Result<T, ParserError>;
+
 #[derive(Debug)]
-pub struct CssParser {
-    lexer: CssLexer,
+pub struct CssParser<T: BufRead> {
+    lexer: CssLexer<T>,
     pub(crate) error_handler: ErrorHandler,
 }
 
-impl CssParser {
-    pub fn new(lexer: CssLexer) -> CssParser {
+impl<T: BufRead> CssParser<T> {
+    pub fn new(lexer: CssLexer<T>) -> CssParser<T> {
         CssParser {
             lexer,
             error_handler: ErrorHandler::new(),
@@ -19,33 +24,39 @@ impl CssParser {
     }
 
     pub fn parse(&mut self) -> StyleSheet {
-        let mut rules: Vec<Rule> = vec![];
+        let (rules, errors): (Vec<_>, Vec<_>) = self.parse_rules()
+            .into_iter()
+            .partition(Result::is_ok);
 
-        loop {
-            let token = self.current_token(true);
-            if is_token_selector(&token) {
-                rules.push(self.parse_rule());
-                if Token::EOF == self.current_token(true) {
-                    break;
-                }
-            } else {
-                self.error_handler.flag(&ParserError::UnexpectedToken {
-                    found: token.to_string(),
-                    expected: None,
-                    context: None,
-                });
-            }
-        };
-
-        StyleSheet { rules }
+        StyleSheet {
+            rules: rules.into_iter().map(Result::unwrap).collect(),
+            errors: errors.into_iter().map(Result::unwrap_err).collect(),
+        }
     }
 
-    fn parse_rule(&mut self) -> Rule {
-        let selectors = SelectorParser::new(self).parse();
-        Rule {
+    fn parse_rules(&mut self) -> Vec<Result<Rule>> {
+        let mut rules: Vec<Result<Rule>> = vec![];
+
+        loop {
+            match self.current_token(true) {
+                Token::EOF => break,
+                _ => rules.push(self.parse_rule()),
+            };
+        }
+
+        rules
+    }
+
+    fn parse_rule(&mut self) -> Result<Rule> {
+        let selectors = match (SelectorParser::new(self).parse(), self.current_token(true)) {
+            (_, Token::EOF) => return Err(ParserError::UnexpectedEOF),
+            (selectors, _) => selectors,
+        };
+
+        Ok(Rule {
             selectors,
             properties: PropertyParser::new(self).parse(),
-        }
+        })
     }
 
     pub(crate) fn try_next_token(&mut self, skip_whitespace: bool) -> Token {

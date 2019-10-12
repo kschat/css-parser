@@ -1,0 +1,28 @@
+
+
+div.foo#id.other {
+    /* the color! */
+    color: red;
+    /*size: 16.5px;*/
+    display: "flex";
+    /*visibility1: 'visible';*/
+    background: url(http://google.com);
+    foo: "asdf";
+}
+
+/* body */
+
+/*
+p {
+    color: yellow;
+}
+
+h1.header p, h2.header p, h3.header p {
+    color: black;
+    something-color: 1;
+}
+
+header something else_asdf {
+    font: serif;
+}
+*/

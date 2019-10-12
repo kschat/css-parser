@@ -3,14 +3,16 @@ use crate::lexer::Token;
 use crate::error::ParserError;
 use crate::style_sheet::{Property, DataType};
 
+use std::io::BufRead;
+
 // TODO make semicolons required except for the last property
 // TODO skip property if there's a syntax error
-pub struct PropertyParser<'a> {
-    css_parser: &'a mut CssParser,
+pub struct PropertyParser<'a, T: BufRead> {
+    css_parser: &'a mut CssParser<T>,
 }
 
-impl<'a> PropertyParser<'a> {
-    pub fn new(css_parser: &'a mut CssParser) -> PropertyParser {
+impl<'a, T: BufRead> PropertyParser<'a, T> {
+    pub fn new(css_parser: &'a mut CssParser<T>) -> PropertyParser<'a, T> {
         PropertyParser { css_parser }
     }
 

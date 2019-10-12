@@ -1,9 +1,12 @@
 use std::ops::Add;
 
+use crate::error::ParserError;
+
 
 #[derive(Debug)]
 pub struct StyleSheet {
     pub rules: Vec<Rule>,
+    pub errors: Vec<ParserError>,
 }
 
 

@@ -1,33 +1,56 @@
 use crate::source::{Source};
 use crate::error::ParserError;
 
+use std::io::{BufRead};
 use std::fmt;
 
+// TODO change values to char where appropriate
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
-    ClassSelector(String),
-    IdSelector(String),
     Identifier(String),
-    String(String),
-    Integer(i32),
-    Float(f32),
-    EOF,
-    Error(ParserError),
-    // Percentage(f32, String), // not supported yet
+    Function(String),
 
+    // Hash(String),
+    // AtKeyword(String),
+
+    Url(String),
+    BadUrl(String),
+
+    String(String),
+    // BadString(String),
+    Integer(i32), // TODO replace Integer and Float with Number
+    Float(f32),
+
+    // Number { int_value: i32, float_value: f32 },
+    // Percentage(String),
+    // Dimension(String),
+
+    // Cdo(String),
+    // Cdc(String),
+
+    Error(ParserError), // TODO remove
+
+    // TODO no need to have a value for constant tokens
     // symbols
-    Dot(String),
-    Pound(String),
-    Star(String),
+    Whitespace(String),
     Comma(String),
     Colon(String),
     Semicolon(String),
+
+    // Delim(String),
+
     LeftBrace(String),
     RightBrace(String),
+
+    LeftBracket(String),
+    RightBracket(String),
+
+    LeftParen(String),
+    RightParen(String),
+
     SingleQuote(String),
     DoubleQuote(String),
-    Minus(String),
-    Whitespace(String),
+    EOF,
 }
 
 impl fmt::Display for Token {
@@ -37,14 +60,14 @@ impl fmt::Display for Token {
 }
 
 #[derive(Debug)]
-pub struct CssLexer {
-    source: Source,
+pub struct CssLexer<T: BufRead> {
+    source: Source<T>,
     current: Option<Token>,
 }
 
 // TODO return iterator
-impl CssLexer {
-    pub fn new(source: Source) -> CssLexer {
+impl<T: BufRead> CssLexer<T> {
+    pub fn new(source: Source<T>) -> CssLexer<T> {
         CssLexer { source, current: None }
     }
 
@@ -74,9 +97,12 @@ impl CssLexer {
             return self.extract_whitespace();
         }
 
+        if self.is_start_of_name() {
+            return self.extract_name();
+        }
+
         match current_char {
-            '.' | '#' => self.extract_selector_or_symbol(current_char),
-            '*' | '{' | '}' | ';' | ':' | ',' => self.extract_symbol(current_char),
+            '.' | '#' | '*' | '{' | '}' | '[' | ']' | '(' | ')' | ';' | ':' | ',' => self.extract_symbol(current_char),
             '\'' | '"' => self.extract_string(current_char),
             '0' ... '9' => self.extract_number(),
             'a' ... 'z' => self.extract_word(),
@@ -91,72 +117,148 @@ impl CssLexer {
         }
     }
 
-    fn extract_selector_or_symbol(&mut self, current_char: char) -> Token {
-        match self.source.peek_character() {
-            Some(next) if is_start_of_word(next) => {
-                let selector = self.extract_while(|c| !is_start_of_selector(c) && is_word_part(c));
-                match current_char {
-                    '#' => Token::IdSelector(selector),
-                    '.' => Token::ClassSelector(selector),
-                    _ => return Token::Error(ParserError::UnexpectedToken {
-                        found: current_char.to_string(),
-                        expected: Some("`#` or `.`".to_string()),
-                        context: None,
-                    }),
-                }
-                /*
-                Token1::Word(
-                    self.extract_while(|c| !is_start_of_selector(c) && is_word_part(c)),
-                    match current_char {
-                        '#' => TokenKind::IdSelector,
-                        '.' => TokenKind::ClassSelector,
-                        _ => return Token1::Error(ParserError::UnexpectedToken {
-                            found: current_char.to_string(),
-                            expected: Some("`#` or `.`".to_string()),
-                            context: None,
-                        }),
-                    },
-                )
-                */
-            },
-            _ => self.extract_symbol(current_char),
-        }
-    }
-
     fn extract_symbol(&mut self, current_char: char) -> Token {
         let value = current_char.to_string();
         self.source.next_character();
 
         match current_char {
-            '.' => Token::Dot(value),
-            '#' => Token::Pound(value),
-            '*' => Token::Star(value),
+            // '.' => Token::Dot(value),
+            // '#' => Token::Pound(value),
+            // '*' => Token::Star(value),
             ',' => Token::Comma(value),
             ':' => Token::Colon(value),
             ';' => Token::Semicolon(value),
             '{' => Token::LeftBrace(value),
             '}' => Token::RightBrace(value),
-            '-' => Token::Minus(value),
+            '[' => Token::LeftBracket(value),
+            ']' => Token::RightBracket(value),
+            '(' => Token::LeftParen(value),
+            ')' => Token::RightParen(value),
             '"' => Token::DoubleQuote(value),
             '\'' => Token::SingleQuote(value),
             _ => return Token::Error(ParserError::UnknownToken(value)),
         }
-        /*
-        Token1::Symbol(current_char.to_string(), match current_char {
-            '.' => TokenKind::Dot,
-            '#' => TokenKind::Pound,
-            '*' => TokenKind::Star,
-            ',' => TokenKind::Comma,
-            ':' => TokenKind::Colon,
-            ';' => TokenKind::Semicolon,
-            '{' => TokenKind::LeftBrace,
-            '}' => TokenKind::RightBrace,
-            '\'' => TokenKind::SingleQuote,
-            '"' => TokenKind::DoubleQuote,
-            '-' => TokenKind::Minus,
-            c => return Token1::Error(ParserError::UnknownToken(c.to_string())),
-        })
-        */
+    }
+
+    fn is_escape(&mut self) -> bool {
+        match self.source.current_character() {
+            Some('\\') => match self.source.peek_character() {
+                None => false,
+                _ => true,
+            },
+            _ => false,
+        }
+    }
+
+    fn is_escape_at(&mut self, start_from: usize) -> bool {
+        match self.source.peek_n_character(start_from) {
+            Some('\\') => match self.source.peek_n_character(start_from + 1) {
+                None => false,
+                _ => true,
+            },
+            _ => false,
+        }
+    }
+
+    fn is_start_of_name(&mut self) -> bool {
+        match self.source.current_character() {
+            Some('-') => match self.source.peek_character() {
+                Some('-') => true,
+                Some(c) => c.is_alphabetic() || c == '_' || self.is_escape_at(1),
+                None => false,
+            },
+            Some(c) => c.is_alphabetic() || c == '_',
+            None => false,
+        }
+    }
+
+    fn extract_name(&mut self) -> Token {
+        let value = self.extract_while(is_word_part);
+
+        match self.source.current_character() {
+            Some('(') => {
+                self.source.next_character();
+                if !value.eq_ignore_ascii_case("url") {
+                    return Token::Function(value);
+                }
+
+                // consume the next token while the next two tokens are whitespace
+                let next = match self.while_next_two_whitespace() {
+                    Some(c) if c.is_whitespace() => self.source.peek_character(),
+                    n => n,
+                };
+
+                match next {
+                    // URLs with a string parameter are parsed as functions
+                    Some('\'') | Some('"') => Token::Function(value),
+                    _ => self.extract_url(),
+                }
+            },
+            _ => Token::Identifier(value),
+        }
+    }
+
+    // TODO return Err for BadUrl per spec
+    fn extract_url(&mut self) -> Token {
+        let mut value = String::new();
+        self.extract_whitespace();
+
+        // TODO clean up
+        loop {
+            match self.source.current_character() {
+                Some(')') | None => {
+                    self.source.next_character();
+                    return Token::Url(value);
+                },
+                Some(c) if c.is_whitespace() => {
+                    self.extract_whitespace();
+                    match self.source.current_character() {
+                        Some(')') | None => {
+                            self.source.next_character();
+                            return Token::Url(value);
+                        },
+                        _ => return self.consume_bad_url(value),
+                    }
+                },
+                // TODO handle non-printable code points
+                Some('"') | Some('\'') | Some('(') => return self.consume_bad_url(value),
+                // TODO handle escapes
+                Some(c) => {
+                    self.source.next_character();
+                    value.push(c);
+                },
+            }
+        }
+    }
+
+    fn consume_bad_url(&mut self, value: String) -> Token {
+        while let Some(c) = self.source.current_character() {
+            self.source.next_character();
+            if c == ')' {
+                break;
+            }
+
+            if self.is_escape() {
+                // TODO consume escape
+            }
+        }
+
+        Token::BadUrl(value)
+    }
+
+    fn while_next_two_whitespace(&mut self) -> Option<char> {
+        loop {
+            let current = self.source.current_character()?;
+            // peek will return None if we're at the EOL, which is whitespace
+            let next = self.source.peek_character().or(Some('\n'))?;
+
+            if current.is_whitespace() && next.is_whitespace() {
+                self.source.next_character();
+                continue;
+            }
+
+            return Some(current)
+        }
     }
 
     // TODO handle quotes in strings
@@ -279,13 +381,17 @@ impl CssLexer {
         format!("{}{}", current, next) == "*/".to_string()
     }
 
-    fn extract_while<T>(&mut self, predicate: T) -> String
-        where T: Fn(char) -> bool
+    fn extract_while<U>(&mut self, predicate: U) -> String
+        where U: Fn(char) -> bool
     {
-        let mut value = self.source.current_character().unwrap().to_string();
-        while let Some(current) = self.source.next_character() {
+        let mut value = String::new();
+
+        while let Some(current) = self.source.current_character() {
             match predicate(current) {
-                true => value.push(current),
+                true => {
+                    self.source.next_character();
+                    value.push(current);
+                },
                 false => break,
             }
         }
@@ -294,14 +400,7 @@ impl CssLexer {
     }
 }
 
+// TODO fix to work with unicode
 fn is_word_part(c: char) -> bool {
     c.is_alphanumeric() || c == '-' || c == '_'
-}
-
-fn is_start_of_word(c: char) -> bool {
-    c.is_alphabetic() || c == '-' || c == '_'
-}
-
-fn is_start_of_selector(c: char) -> bool {
-    c == '.' || c == '#'
 }

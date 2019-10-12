@@ -3,10 +3,17 @@ use crate::lexer::Token;
 use crate::error::ParserError;
 use crate::style_sheet::{SelectorGroup, Selector};
 
+use std::io::BufRead;
+
+// TODO inline maybe
 pub fn is_token_selector(token: &Token) -> bool {
     match token {
-        Token::Identifier(..) | Token::Star(..) | Token::IdSelector(..) | Token::ClassSelector(..) => true,
-        _ => false,
+        // Token::Identifier(..) | Token::Star(..) | Token::IdSelector(..) | Token::ClassSelector(..) => true,
+        Token::LeftBrace(..) | Token::RightBrace(..) => false,
+        Token::LeftBracket(..) | Token::RightBracket(..) => false,
+        Token::LeftParen(..) | Token::RightParen(..) => false,
+        Token::EOF => false,
+        _ => true,
     }
 }
 
@@ -14,13 +21,13 @@ pub fn is_token_selector(token: &Token) -> bool {
 // selector_list := selector_group[,selector_group..] {
 // selector_group := selector[ selector..]
 // selector := *|[.#]word
-pub struct SelectorParser<'a> {
+pub struct SelectorParser<'a, T: BufRead> {
     // TODO had to make some fns and fields public, find alternative
-    css_parser: &'a mut CssParser,
+    css_parser: &'a mut CssParser<T>,
 }
 
-impl<'a> SelectorParser<'a> {
-    pub fn new(css_parser: &'a mut CssParser) -> SelectorParser {
+impl<'a, T: BufRead> SelectorParser<'a, T> {
+    pub fn new(css_parser: &'a mut CssParser<T>) -> SelectorParser<'a, T> {
         SelectorParser { css_parser }
     }
 
@@ -135,6 +142,7 @@ impl<'a> SelectorParser<'a> {
 
         loop {
             match self.css_parser.current_token(false) {
+                /*
                 Token::IdSelector(val) => {
                     selector.id = Some(val);
                     self.css_parser.try_next_token(false);
@@ -144,6 +152,7 @@ impl<'a> SelectorParser<'a> {
                     selector.class_names.push(val);
                     self.css_parser.try_next_token(false);
                 },
+                */
 
                 Token::Identifier(val) => {
                     selector.tag_name = Some(val);
